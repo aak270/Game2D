@@ -3,19 +3,40 @@
 #include <stdio.h>
 #include <string>
 
+// Texture wrapper class
+class Texture {
+public:
+    // Initializes variables
+    Texture();
+
+    // Deallocates memory
+    ~Texture();
+
+    // Loads image at specified path
+    bool loadFromFile(std::string path);
+
+    // Deallocates texture
+    void free();
+
+    // Renders texture at given point
+    void render(int x, int y);
+
+    // Gets image dimensions
+    int getWidth();
+    int getHeight();
+
+private:
+    // The actual hardware texture
+    SDL_Texture* texture;
+
+    // Image dimensions
+    int width;
+    int height;
+};
+
 // Screen dimension constants
 const int SCREEN_WIDTH = 1080;
 const int SCREEN_HEIGHT = 720;
-
-//  Key press constants
-enum KeyPressSurfaces {
-    KEY_PRESS_SURFACE_DEFAULT,
-    KEY_PRESS_SURFACE_UP,
-    KEY_PRESS_SURFACE_DOWN,
-    KEY_PRESS_SURFACE_LEFT,
-    KEY_PRESS_SURFACE_RIGHT,
-    KEY_PRESS_SURFACE_TOTAL
-};
 
 // Starts up SDL and creates window
 bool init();
@@ -26,17 +47,18 @@ bool loadMedia();
 // Frees media and shuts down SDL
 void close();
 
-// Loads individual image
-SDL_Surface* loadSurface(std::string path);
+// Loads individual image as texture
+SDL_Texture* loadTexture(std::string path);
 
 // The window we'll be rendering to
 SDL_Window* window = NULL;
 
-// The surface contained by the window
-SDL_Surface* screenSurface = NULL;
+// The window renderer
+SDL_Renderer* renderer = NULL;
 
-// Current displated PNG image
-SDL_Surface* pngSurface = NULL;
+// Scene textures
+Texture fooTexture;
+Texture backgroundTexture;
 
 int main(int argc, char* args[]) {
 
@@ -64,16 +86,21 @@ int main(int argc, char* args[]) {
                     }
                 }
 
-                // Apply the image streched
-                SDL_Rect strecthRect;
-                strecthRect.x = 0;
-                strecthRect.y = 0;
-                strecthRect.w = SCREEN_WIDTH;
-                strecthRect.h = SCREEN_HEIGHT;
-                SDL_BlitScaled(pngSurface, NULL, screenSurface, &strecthRect);
+                // Clear screen
+                SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
+                SDL_RenderClear(renderer);
 
-                // Update the surface
-                SDL_UpdateWindowSurface(window);
+                //Render background texture to screen
+                backgroundTexture.render(0, 0);
+
+                //Render Foo' to the screen
+                fooTexture.render(240, 190);
+
+                //Update screen
+                SDL_RenderPresent(renderer);
+
+                // Update screen
+                SDL_RenderPresent(renderer);
             }
         }
     }
@@ -93,22 +120,28 @@ bool init() {
         printf("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
         success = false;
     } else {
-        
         // Create window
         window = SDL_CreateWindow("Game2D", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
         if (window == NULL) {
             printf("Window could not be created! SDL_Error: %s\n", SDL_GetError());
             success = false;
         } else {
-            // Initialize PNG loading
-            int imgFlags = IMG_INIT_PNG;
-            if (!(IMG_Init(imgFlags) & imgFlags)) {
-                printf("SDL_image could not initialize! SDL_image Error: %s\n", IMG_GetError());
+            // Create renderer for window
+            renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+            if (renderer == NULL) {
+                printf("Renderer could not be created! SDL Error: %s\n", SDL_GetError());
                 success = false;
-            }
+            } else {
+                // Initialize renderer color
+                SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
 
-            // Get window surface
-            screenSurface = SDL_GetWindowSurface(window);
+                // Initialize PNG loading
+                int imgFlags = IMG_INIT_PNG;
+                if (!(IMG_Init(imgFlags) & imgFlags)) {
+                    printf("SDL_image could not initialize! SDL_image Error: %s\n", IMG_GetError());
+                    success = false;
+                }
+            }
         }
     }
 
@@ -119,47 +152,120 @@ bool loadMedia() {
     // Loading success flag
     bool success = true;
 
-    //Load default surface
-    pngSurface = loadSurface("../Assets/loaded.png");
-    if (pngSurface == NULL) {
-        printf("Failed to load default image!\n");
+    // Load Foo' texture
+    if(!fooTexture.loadFromFile("../Assets/foo.png")) {
+        printf("Failed to load Foo' texture image!\n");
         success = false;
     }
 
+    // Load background texture
+    if (!backgroundTexture.loadFromFile("../Assets/background.png")) {
+        printf("Failed to load background texture image!\n");
+        success = false;
+    }
+    //
+    ////Load PNG texture
+    //SDL_Texture* texture = loadTexture("../Assets/viewport.png");
+    //if (texture == NULL) {
+    //    printf("Failed to load default image!\n");
+    //    success = false;
+    //}
+    //
     return success;
 }
 
 void close() {
-    // Deallocate surface
-    SDL_FreeSurface(screenSurface);
-    screenSurface = NULL;
+    //Free loaded images
+    fooTexture.free();
+    backgroundTexture.free();
 
     // Destroy window
+    SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
+    renderer = NULL;
     window = NULL;
 
     // Quit SDL subsystems
+    IMG_Quit();
     SDL_Quit();
 }
 
-SDL_Surface* loadSurface(std::string path) {
-    // The final optimized image
-    SDL_Surface* optimizedSurface = NULL;
+SDL_Texture* loadTexture(std::string path) {
+    // The final texture
+    SDL_Texture* newTexture = IMG_LoadTexture(renderer, path.c_str());
+    if (newTexture == NULL) {
+        printf("Unable to load image %s! SDL Error: %s\n", path.c_str(), SDL_GetError());
+    }
 
-    // Load image at specific path
+    return newTexture;
+}
+
+Texture::Texture() {
+    // Initialize
+    texture = NULL;
+    width = 0;
+    height = 0;
+}
+
+Texture::~Texture() {
+    // Deallocate
+    free();
+}
+
+bool Texture::loadFromFile(std::string path) {
+    // Get rid of preexisting texture
+    free();
+
+    //The final texture
+    SDL_Texture* newTexture = NULL;
+
+    //Load image at specified path
     SDL_Surface* loadedSurface = IMG_Load(path.c_str());
     if (loadedSurface == NULL) {
-        printf("Unable to load image %s! SDL Error: %s\n", path.c_str(), SDL_GetError());
+        printf("Unable to load image %s! SDL_image Error: %s\n", path.c_str(), IMG_GetError());
     } else {
-        // Convert surface to screen format
-        optimizedSurface = SDL_ConvertSurface(loadedSurface, screenSurface->format, 0);
-        if (optimizedSurface == NULL) {
-            printf("Unable to optimize image %s! SDL Error: %s\n", path.c_str(), SDL_GetError());
+        //Color key image
+        SDL_SetColorKey(loadedSurface, SDL_TRUE, SDL_MapRGB(loadedSurface->format, 0, 0xFF, 0xFF));
+
+        //Create texture from surface pixels
+        newTexture = SDL_CreateTextureFromSurface(renderer, loadedSurface);
+        if (newTexture == NULL) {
+            printf("Unable to create texture from %s! SDL Error: %s\n", path.c_str(), SDL_GetError());
+        } else {
+            //Get image dimensions
+            width = loadedSurface->w;
+            height = loadedSurface->h;
         }
 
-        // Get rid of old loaded surface
+        //Get rid of old loaded surface
         SDL_FreeSurface(loadedSurface);
     }
 
-    return optimizedSurface;
+    //Return success
+    texture = newTexture;
+    return texture != NULL;
+}
+
+void Texture::free() {
+    // Free texture if it exists
+    if (texture != NULL) {
+        SDL_DestroyTexture(texture);
+        texture = NULL;
+        width = 0;
+        height = 0;
+    }
+}
+
+void Texture::render(int x, int y) {
+    // Set rendering space and render to screen
+    SDL_Rect renderQuad = { x, y, width, height };
+    SDL_RenderCopy(renderer, texture, NULL, &renderQuad);
+}
+
+int Texture::getWidth() {
+    return width;
+}
+
+int Texture::getHeight() {
+    return height;
 }
